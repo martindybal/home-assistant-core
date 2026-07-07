@@ -1,0 +1,14 @@
+{
+  "domain": "taphome",
+  "name": "TapHome",
+  "codeowners": [
+    "@martindybal"
+  ],
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/taphome",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "requirements": [
+    "taphome-sdk==1.0.0"
+  ]
+}

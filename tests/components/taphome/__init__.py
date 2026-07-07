@@ -1,0 +1,226 @@
+"""Tests for the TapHome integration."""
+
+from unittest.mock import Mock
+
+from taphome_sdk import HubConnectionState, Location, TapHomeHub, ValueType
+from taphome_sdk.device_factory import DeviceFactory
+from taphome_sdk.taphome_api import (
+    DeviceMetadata,
+    DeviceValues,
+    SetDeviceValueResponse,
+    ValueChangeResult,
+)
+
+from homeassistant.components.taphome.const import CONF_API_URL, DOMAIN
+from homeassistant.const import CONF_ID, CONF_TOKEN
+from homeassistant.core import HomeAssistant
+
+from tests.common import MockConfigEntry
+
+TEST_API_URL = "http://10.0.0.5/api/TapHomeApi/v1"
+TEST_TOKEN = "test-token"
+TEST_LOCATION_ID = "11111111-2222-3333-4444-555555555555"
+TEST_LOCATION_NAME = "Test Home"
+
+TEST_LOCATION = Location(
+    location_id=TEST_LOCATION_ID,
+    location_name=TEST_LOCATION_NAME,
+    taphome_api_version=1,
+    timestamp=1,
+)
+
+# Raw metadata mirroring the TapHome API discovery response. Devices carry no
+# zone/category on purpose: the setup wizard then skips the zone/label steps,
+# which keeps the flow tests focused on connection and device selection.
+DEVICE_DEFINITIONS: tuple[dict, ...] = (
+    {
+        "deviceId": 1,
+        "type": "LightSwitch",
+        "name": "Kitchen Light",
+        "description": "Kitchen ceiling light",
+        "supportedValues": [
+            {"valueTypeId": ValueType.ANALOG_OUTPUT_VALUE.value, "readOnly": False},
+            {
+                "valueTypeId": ValueType.ANALOG_OUTPUT_DESIRED_VALUE.value,
+                "readOnly": False,
+            },
+            {"valueTypeId": ValueType.SWITCH_STATE.value, "readOnly": False},
+        ],
+        "values": {
+            ValueType.ANALOG_OUTPUT_VALUE: 0.0,
+            ValueType.ANALOG_OUTPUT_DESIRED_VALUE: 0.0,
+            ValueType.SWITCH_STATE: 0.0,
+        },
+    },
+    {
+        "deviceId": 2,
+        "type": "PowerOutlet",
+        "name": "Garden Socket",
+        "description": "Socket by the terrace",
+        "supportedValues": [
+            {"valueTypeId": ValueType.SWITCH_STATE.value, "readOnly": False},
+        ],
+        "values": {ValueType.SWITCH_STATE: 0.0},
+    },
+    {
+        "deviceId": 3,
+        "type": "Thermostat",
+        "name": "Living Room Thermostat",
+        "description": "Thermostat in the living room",
+        "supportedValues": [
+            {"valueTypeId": ValueType.REAL_TEMPERATURE.value, "readOnly": True},
+            {"valueTypeId": ValueType.TEMPERATURE_SET_POINT.value, "readOnly": False},
+        ],
+        "values": {
+            ValueType.REAL_TEMPERATURE: 21.3,
+            ValueType.TEMPERATURE_SET_POINT: 22.0,
+        },
+    },
+    {
+        "deviceId": 4,
+        "type": "Blinds",
+        "name": "Bedroom Blinds",
+        "description": "Blinds in the bedroom",
+        "supportedValues": [
+            {"valueTypeId": ValueType.BLINDS_LEVEL.value, "readOnly": False},
+            {"valueTypeId": ValueType.BLINDS_IS_MOVING.value, "readOnly": True},
+        ],
+        "values": {
+            ValueType.BLINDS_LEVEL: 0.0,
+            ValueType.BLINDS_IS_MOVING: 0.0,
+        },
+    },
+    {
+        "deviceId": 5,
+        "type": "Variable",
+        "name": "Outside Temperature",
+        "description": "Temperature in the garden",
+        "supportedValues": [
+            {"valueTypeId": ValueType.VARIABLE_STATE.value, "readOnly": True},
+        ],
+        "values": {ValueType.VARIABLE_STATE: 23.4},
+    },
+    {
+        "deviceId": 6,
+        "type": "MultiValueSwitch",
+        "name": "Scene Switch",
+        "description": "Living room scenes",
+        "supportedValues": [
+            {
+                "valueTypeId": ValueType.MULTI_VALUE_SWITCH_STATE.value,
+                "readOnly": False,
+                "enumeratedValues": [
+                    {"value": 0, "name": "Off", "isEnabled": True},
+                    {"value": 1, "name": "Party", "isEnabled": True},
+                    {"value": 2, "name": "Relax", "isEnabled": True},
+                ],
+            },
+            {
+                "valueTypeId": ValueType.MULTI_VALUE_SWITCH_DESIRED_STATE.value,
+                "readOnly": False,
+            },
+        ],
+        "values": {
+            ValueType.MULTI_VALUE_SWITCH_STATE: 0.0,
+            ValueType.MULTI_VALUE_SWITCH_DESIRED_STATE: 0.0,
+        },
+    },
+)
+
+
+# Setting a "desired" value makes the core apply it to the actual value; the
+# fake API mirrors that so a reload after a command returns the new state.
+_DESIRED_TO_ACTUAL = {
+    ValueType.ANALOG_OUTPUT_DESIRED_VALUE: ValueType.ANALOG_OUTPUT_VALUE,
+    ValueType.MULTI_VALUE_SWITCH_DESIRED_STATE: ValueType.MULTI_VALUE_SWITCH_STATE,
+    ValueType.HUE_BRIGHTNESS_DESIRED_VALUE: ValueType.HUE_BRIGHTNESS,
+}
+
+
+class FakeTapHomeApi:
+    """Stateful in-memory stand-in for the TapHome HTTP API."""
+
+    def __init__(self) -> None:
+        """Seed the store with the fixture device values."""
+        self.values: dict[int, dict[ValueType, float]] = {
+            definition["deviceId"]: dict(definition.get("values", {}))
+            for definition in DEVICE_DEFINITIONS
+        }
+        self.set_calls: list[tuple[int, dict[ValueType, float]]] = []
+
+    async def async_set_device_values(
+        self, device_id: int, values: dict[ValueType, float]
+    ) -> SetDeviceValueResponse:
+        """Record the call, apply the values and report them as changed."""
+        self.set_calls.append((device_id, dict(values)))
+        stored = self.values.setdefault(device_id, {})
+        for value_type, value in values.items():
+            stored[value_type] = value
+            actual = _DESIRED_TO_ACTUAL.get(value_type)
+            if actual is not None:
+                stored[actual] = value
+        return SetDeviceValueResponse(
+            device_id=device_id,
+            values_changed=dict.fromkeys(values, ValueChangeResult.CHANGED),
+            timestamp=1,
+        )
+
+    async def async_get_device_values(self, device_id: int) -> DeviceValues:
+        """Return the currently stored values of the device."""
+        return DeviceValues(
+            device_id=device_id,
+            values=dict(self.values.get(device_id, {})),
+            error_code=None,
+            message=None,
+        )
+
+
+def make_device(hub: TapHomeHub, definition: dict):
+    """Create one SDK device on the hub from raw API-shaped metadata."""
+    metadata = DeviceMetadata.from_dict(definition)
+    device = DeviceFactory.create_device(
+        hub.api, hub.connection_type, metadata, dict(definition.get("values", {}))
+    )
+    assert device is not None
+    hub.devices[metadata.id] = device
+    return device
+
+
+def make_hub(api: FakeTapHomeApi | None = None) -> TapHomeHub:
+    """Build a connected hub with the fixture devices and a fake API."""
+    hub = TapHomeHub(TEST_API_URL, TEST_TOKEN, Mock())
+    hub.api = api or FakeTapHomeApi()
+    hub.location = TEST_LOCATION
+
+    for definition in DEVICE_DEFINITIONS:
+        make_device(hub, definition)
+
+    hub.connection_state.value = HubConnectionState.CONNECTED
+    return hub
+
+
+def make_config_entry(extra_options: dict | None = None):
+    """Return a config entry as created by the config flow."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title=TEST_LOCATION_NAME,
+        unique_id=TEST_LOCATION_ID,
+        data={
+            CONF_TOKEN: TEST_TOKEN,
+            CONF_API_URL: TEST_API_URL,
+            CONF_ID: None,
+        },
+        options={
+            "lights": [{"id": 1}],
+            "switches": [{"id": 2}],
+            "sensors": [{"id": 5}],
+            **(extra_options or {}),
+        },
+    )
+
+
+async def setup_integration(hass: HomeAssistant, config_entry) -> None:
+    """Add the config entry to hass and set it up."""
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()

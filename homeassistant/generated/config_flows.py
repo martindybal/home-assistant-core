@@ -753,6 +753,7 @@ FLOWS = {
         "tailwind",
         "tami4",
         "tankerkoenig",
+        "taphome",
         "tasmota",
         "tautulli",
         "technove",
