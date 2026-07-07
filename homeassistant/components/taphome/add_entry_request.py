@@ -17,7 +17,7 @@ TapHomeEntityT = TypeVar("TapHomeEntityT", bound=TapHomeEntity)
 
 def add_taphome_entities(
     entry: TapHomeConfigEntry,
-    add_entities: AddEntitiesCallback,
+    add_entities: AddEntitiesCallback | Callable[[Iterable[TapHomeEntityT]], None],
     platform_domain: str,
     taphome_entities_factory: Callable[
         [AddEntryRequest[TapHomeEntityConfigT]],
@@ -29,7 +29,7 @@ def add_taphome_entities(
         entry.runtime_data.add_entry_requests[platform_domain]
     )
 
-    all_entities = []
+    all_entities: list[TapHomeEntityT] = []
     for configuration in entities_configuration:
         try:
             entry_entities = taphome_entities_factory(configuration)

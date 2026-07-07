@@ -1,6 +1,7 @@
 """TapHome number integration."""
 
 import logging
+from typing import override
 
 from taphome_sdk import DeviceState, ValueType, VariableDevice, VariableState
 
@@ -40,12 +41,14 @@ class TapHomeNumber(TapHomeEntity, NumberEntity):
 
         super().__init__(config, self._variable, NUMBER_DOMAIN)
 
+    @override
     def _state_changed(self, _: DeviceState | None, current_state: DeviceState) -> None:
         """Update native value before HA state is refreshed."""
         if isinstance(current_state, VariableState):
             self._attr_native_value = current_state.value
         super()._state_changed(_, current_state)
 
+    @override
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
         if self._read_only:

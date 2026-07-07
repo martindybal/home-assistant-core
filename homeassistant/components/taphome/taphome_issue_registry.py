@@ -1,7 +1,8 @@
 """TapHome Issue Registry."""
 
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.issue_registry import HomeAssistant, IssueSeverity
+from homeassistant.helpers.issue_registry import IssueSeverity
 
 from .const import TAPHOME_PLATFORM
 from .translations import Issues

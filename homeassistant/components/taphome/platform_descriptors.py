@@ -92,7 +92,7 @@ _GENERIC_OUTPUT_TYPES = (
 )
 
 _BUTTON_ACTIONS = tuple(
-    action.name.lower() for action in ButtonAction if action != ButtonAction.NONE
+    action.name.lower() for action in ButtonAction if action is not ButtonAction.NONE
 )
 
 # One descriptor per device-list configuration key. The candidate types must

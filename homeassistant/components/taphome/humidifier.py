@@ -1,6 +1,6 @@
 """TapHome humidifier integration."""
 
-from typing import Any
+from typing import Any, override
 
 from taphome_sdk import (
     Device,
@@ -151,6 +151,7 @@ class TapHomeHumidifier(TapHomeEntity, HumidifierEntity):
     ) -> None:
         self._attr_mode = self._mode_device.selected_option
 
+    @override
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the device on."""
         if self._switch_device is not None:
@@ -158,6 +159,7 @@ class TapHomeHumidifier(TapHomeEntity, HumidifierEntity):
         else:
             await self._humidifier_generic_output.async_turn_on()
 
+    @override
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the device off."""
         if self._switch_device is None:
@@ -165,6 +167,7 @@ class TapHomeHumidifier(TapHomeEntity, HumidifierEntity):
         else:
             await self._switch_device.async_turn_off()
 
+    @override
     async def async_set_humidity(self, humidity: int) -> None:
         """Set new humidity level."""
         if self._switch_device is not None:
@@ -173,6 +176,7 @@ class TapHomeHumidifier(TapHomeEntity, HumidifierEntity):
             self.convert_ha_percentage_to_th(humidity)
         )
 
+    @override
     async def async_set_mode(self, mode):
         """Set new target preset mode."""
         if self._mode_device is not None:

@@ -135,7 +135,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapHomeConfigEntry) -> b
             f"Failed to connect to TapHome core: {error}"
         ) from error
 
-    if hub.connection_state.value != HubConnectionState.CONNECTED:
+    if hub.connection_state.value is not HubConnectionState.CONNECTED:
         hub.disconnect()
         raise ConfigEntryNotReady("TapHome hub is not connected")
 
@@ -143,7 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapHomeConfigEntry) -> b
         _: HubConnectionState, state: HubConnectionState
     ) -> None:
         """Handle changes in hub connection state."""
-        if state == HubConnectionState.CONNECTED:
+        if state is HubConnectionState.CONNECTED:
             taphome_issue_registry.try_delete_core_unavailable_issue()
         else:
             taphome_issue_registry.create_core_unavailable_issue()

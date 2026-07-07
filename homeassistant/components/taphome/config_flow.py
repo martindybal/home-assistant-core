@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from copy import deepcopy
 import logging
-from typing import Any
+from typing import Any, override
 
 import aiohttp
 from aiohttp import ClientSession
@@ -21,6 +21,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import (
     ConfigEntry,
+    ConfigEntryBaseFlow,
     ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
@@ -229,7 +230,7 @@ def build_field_selector(
     device_label: Callable[[int], str],
 ) -> Any:
     """Build the selector for one per-device option field."""
-    if option_field.kind == FieldKind.DEVICE_ID:
+    if option_field.kind is FieldKind.DEVICE_ID:
         options = [
             SelectOptionDict(value=str(device.id), label=device_label(device.id))
             for device in devices.values()
@@ -244,7 +245,7 @@ def build_field_selector(
                 custom_value=True,
             )
         )
-    if option_field.kind == FieldKind.VALUE_TYPE:
+    if option_field.kind is FieldKind.VALUE_TYPE:
         options = [
             SelectOptionDict(
                 value=str(value_type.value),
@@ -260,20 +261,21 @@ def build_field_selector(
         return SelectSelector(
             SelectSelectorConfig(
                 options=sorted(option_field.options),
-                multiple=option_field.kind == FieldKind.MULTI_ENUM,
+                multiple=option_field.kind is FieldKind.MULTI_ENUM,
                 mode=SelectSelectorMode.DROPDOWN,
             )
         )
     if option_field.kind in (FieldKind.NUMBER_INT, FieldKind.NUMBER_FLOAT):
-        return NumberSelector(
-            NumberSelectorConfig(
-                min=option_field.min_value,
-                max=option_field.max_value,
-                step=option_field.step
-                or (1 if option_field.kind == FieldKind.NUMBER_INT else 0.1),
-                mode=NumberSelectorMode.BOX,
-            )
+        number_config = NumberSelectorConfig(
+            step=option_field.step
+            or (1 if option_field.kind is FieldKind.NUMBER_INT else 0.1),
+            mode=NumberSelectorMode.BOX,
         )
+        if option_field.min_value is not None:
+            number_config["min"] = option_field.min_value
+        if option_field.max_value is not None:
+            number_config["max"] = option_field.max_value
+        return NumberSelector(number_config)
     return TextSelector()
 
 
@@ -296,9 +298,9 @@ def build_device_options_schema(
             continue
         if option_field.kind in (FieldKind.DEVICE_ID, FieldKind.VALUE_TYPE):
             suggested_values[option_field.key] = str(value)
-        elif option_field.kind == FieldKind.MULTI_ENUM:
+        elif option_field.kind is FieldKind.MULTI_ENUM:
             suggested_values[option_field.key] = [str(item) for item in value]
-        elif option_field.kind == FieldKind.ENUM:
+        elif option_field.kind is FieldKind.ENUM:
             suggested_values[option_field.key] = str(value)
         else:
             suggested_values[option_field.key] = value
@@ -316,7 +318,7 @@ def apply_device_options(
     new_config = dict(device_config)
     for option_field in descriptor.fields:
         value = user_input.get(option_field.key)
-        if value in (None, "", []):
+        if value is None or value in ("", []):
             new_config.pop(option_field.key, None)
             continue
         if option_field.kind in (FieldKind.DEVICE_ID, FieldKind.VALUE_TYPE):
@@ -326,11 +328,11 @@ def apply_device_options(
                 errors[option_field.key] = "invalid_device_id"
             except TypeError:
                 errors[option_field.key] = "invalid_device_id"
-        elif option_field.kind == FieldKind.NUMBER_INT:
+        elif option_field.kind is FieldKind.NUMBER_INT:
             new_config[option_field.key] = int(value)
-        elif option_field.kind == FieldKind.NUMBER_FLOAT:
+        elif option_field.kind is FieldKind.NUMBER_FLOAT:
             new_config[option_field.key] = float(value)
-        elif option_field.kind == FieldKind.MULTI_ENUM:
+        elif option_field.kind is FieldKind.MULTI_ENUM:
             new_config[option_field.key] = list(value)
         else:
             new_config[option_field.key] = value
@@ -338,14 +340,14 @@ def apply_device_options(
     return new_config
 
 
-class _TapHomeSetupFlow:
+class _TapHomeSetupFlow(ConfigEntryBaseFlow):
     """Shared zone, label and device setup steps for config and options flows.
 
-    Mixed into ConfigFlow/OptionsFlow subclasses, which provide the flow
-    members pylint cannot see on the mixin itself.
+    Mixed into ConfigFlow/OptionsFlow subclasses. ``config_entry`` is only
+    touched by the options-flow steps, where OptionsFlow provides it.
     """
 
-    # pylint: disable=no-member
+    config_entry: ConfigEntry
 
     _options: dict[str, Any]
     _setup_wizard: bool = False
@@ -834,24 +836,24 @@ class _TapHomeSetupFlow:
         for entry in er.async_entries_for_config_entry(
             registry, self.config_entry.entry_id
         ):
-            config_key = domain_to_key.get(entry.domain)
-            if config_key is None:
+            entry_config_key = domain_to_key.get(entry.domain)
+            if entry_config_key is None:
                 continue
-            device_id = _parse_device_id_from_unique_id(entry.unique_id)
-            if device_id is None:
+            entry_device_id = _parse_device_id_from_unique_id(entry.unique_id)
+            if entry_device_id is None:
                 continue
-            index = index_by_device.get((config_key, device_id))
-            if index is None:
+            entry_index = index_by_device.get((entry_config_key, entry_device_id))
+            if entry_index is None:
                 continue
-            selections[entry.entity_id] = f"{config_key}:{index}"
+            selections[entry.entity_id] = f"{entry_config_key}:{entry_index}"
         return selections
 
     def _remove_devices(self, selections: list[str]) -> None:
         """Remove the selected config_key:index entries from the options."""
         indexes_by_platform: dict[str, list[int]] = {}
         for selection in selections:
-            config_key, index = selection.rsplit(":", 1)
-            indexes_by_platform.setdefault(config_key, []).append(int(index))
+            config_key, index_str = selection.rsplit(":", 1)
+            indexes_by_platform.setdefault(config_key, []).append(int(index_str))
         for config_key, indexes in indexes_by_platform.items():
             devices = self._options[config_key]
             for index in sorted(indexes, reverse=True):
@@ -1008,10 +1010,12 @@ class TapHomeOptionsFlow(_TapHomeSetupFlow, OptionsFlow):
         return self.config_entry.runtime_data.hub
 
     @property
+    @override
     def _devices(self) -> dict[int, Device]:
         """Return the devices discovered by the loaded core."""
         return self._hub.devices
 
+    @override
     async def _async_commit(self, completed: str) -> ConfigFlowResult:
         """Save the edited options; the update listener reloads the entry."""
         return self._async_save_options()
@@ -1032,15 +1036,18 @@ class TapHomeConfigFlow(_TapHomeSetupFlow, ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
+    @override
     def async_get_options_flow(config_entry: ConfigEntry) -> TapHomeOptionsFlow:
         """Create the options flow handler."""
         return TapHomeOptionsFlow()
 
     @property
+    @override
     def _devices(self) -> dict[int, Device]:
         """Return the devices discovered while adding the core."""
         return self._wizard_devices
 
+    @override
     async def _async_commit(self, completed: str) -> ConfigFlowResult:
         """Advance the initial setup wizard after a section is completed."""
         if completed == "zones":
@@ -1049,6 +1056,7 @@ class TapHomeConfigFlow(_TapHomeSetupFlow, ConfigFlow, domain=DOMAIN):
             return await self.async_step_add_devices()
         return self._async_create_wizard_entry()
 
+    @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
