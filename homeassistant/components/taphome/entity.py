@@ -1,25 +1,52 @@
 """Common entity abstractions for the TapHome integration."""
 
+from collections.abc import Callable
 from typing import Any
 
-from taphome_sdk import Device, DeviceState, HubConnectionState
+from taphome_sdk import Device, DeviceState, Event, HubConnectionState
 
 from homeassistant.helpers import (
-    area_registry as ar,
+    device_registry as dr,
     entity_registry as er,
     label_registry as lr,
 )
-from homeassistant.helpers.entity import (
-    Entity,
-    async_generate_entity_id,
-    cached_property,
-)
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity, cached_property
 
+from .const import DOMAIN
 from .taphome_config_entry import AddEntryRequest, TapHomeEntityConfigT
 
 
-class TapHomeEntity(Entity):
+class TapHomeSubscriptionMixin:
+    """Defer SDK event subscriptions to the entity lifecycle.
+
+    Handlers run once at registration time to seed the entity attributes
+    (Event.subscribe replays the last value); the permanent subscription
+    is made in async_added_to_hass and removed with the entity.
+    """
+
+    def _subscribe(self, event: Event, handler: Callable) -> None:
+        """Seed the handler now and subscribe when the entity is added."""
+        if not hasattr(self, "_pending_subscriptions"):
+            self._pending_subscriptions: list[tuple[Event, Callable]] = []
+        self._pending_subscriptions.append((event, handler))
+        event.subscribe(handler)
+        event.unsubscribe(handler)
+
+    async def async_added_to_hass(self) -> None:
+        """Activate the recorded subscriptions."""
+        await super().async_added_to_hass()  # type: ignore[misc]
+        for event, handler in getattr(self, "_pending_subscriptions", []):
+            event.subscribe(handler)
+            self.async_on_remove(  # type: ignore[attr-defined]
+                lambda event=event, handler=handler: event.unsubscribe(handler)
+            )
+
+
+class TapHomeEntity(TapHomeSubscriptionMixin, Entity):
     """Base class for all TapHome entities."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -33,6 +60,7 @@ class TapHomeEntity(Entity):
         self._core_config = config.core
 
         self._attr_available = False
+        self._attr_name = None
 
         self._zone = taphome_device.zone
         self._category = taphome_device.category
@@ -45,86 +73,72 @@ class TapHomeEntity(Entity):
             f"taphome{unique_id_core}.{unique_id_device}.{taphome_device.id}".lower()
         )
 
-        if config.core.use_description_as_entity_id:
-            entity_id_format = domain + ".{}"
-            self.entity_id = async_generate_entity_id(
-                entity_id_format,
-                f"{unique_id_determination} {taphome_device.description}",
-                hass=config.hass,
-            )
-
-        if config.core.use_description_as_name:
-            self._attr_name = taphome_device.description
-        else:
-            self._attr_name = taphome_device.name
+        location = config.hub.location
+        location_id = location.location_id if location else config.core.id or DOMAIN
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{location_id}_{taphome_device.id}")},
+            name=taphome_device.name,
+            manufacturer="TapHome",
+            model=taphome_device.device_type,
+            suggested_area=self._zone,
+            via_device=(DOMAIN, location_id),
+        )
 
         self._add_state_attributes_if_allowed("taphome_id", taphome_device.id)
-        if taphome_device is not None:
-            self._add_state_attributes_if_allowed("taphome_name", taphome_device.name)
-            self._add_state_attributes_if_allowed(
-                "taphome_description", taphome_device.description
-            )
-            self._add_state_attributes_if_allowed(
-                "taphome_category", taphome_device.category
-            )
-            self._add_state_attributes_if_allowed("taphome_zone", self._zone)
+        self._add_state_attributes_if_allowed("taphome_name", taphome_device.name)
+        self._add_state_attributes_if_allowed(
+            "taphome_description", taphome_device.description
+        )
+        self._add_state_attributes_if_allowed(
+            "taphome_category", taphome_device.category
+        )
+        self._add_state_attributes_if_allowed("taphome_zone", self._zone)
 
-        config.hub.connection_state.changed += self._connection_state_changed
-        taphome_device.state.changed += self._state_changed
+        self._subscribe(
+            config.hub.connection_state.changed, self._connection_state_changed
+        )
+        self._subscribe(taphome_device.state.changed, self._state_changed)
+
+    def _schedule_update_when_changed(self, device: Device) -> None:
+        """Refresh the entity state whenever the given device changes."""
+        self._subscribe(
+            device.state.changed, lambda _, __: self.schedule_update_ha_state()
+        )
 
     async def async_added_to_hass(self) -> None:
-        """Run when entity about to be added to hass."""
+        """Subscribe to the SDK events and apply the zone/label mappings."""
         await super().async_added_to_hass()
-        await self._async_set_area()
-        await self._async_set_label()
+        self._apply_zone_mapping()
+        self._apply_label_mapping()
 
-    async def _async_set_area(self) -> None:
+    def _apply_zone_mapping(self) -> None:
+        """Move the device to the area its TapHome zone is mapped to."""
         mapping = self._core_config.zone_mapping
         if mapping is None or self._zone is None:
             return
-        target = mapping.get(self._zone)
-        if target is None:
+        area_id = mapping.get(self._zone)
+        if area_id is None:
             return
-        area_registry = ar.async_get(self.hass)
-        entity_registry = er.async_get(self.hass)
+        device_registry = dr.async_get(self.hass)
+        device = device_registry.async_get_device(self._attr_device_info["identifiers"])
+        if device is not None and device.area_id != area_id:
+            device_registry.async_update_device(device.id, area_id=area_id)
 
-        # A configured area id is used directly; a legacy YAML name is created
-        # on demand.
-        area = area_registry.async_get_area(
-            target
-        ) or area_registry.async_get_area_by_name(target)
-        if area is None:
-            area = area_registry.async_create(target)
-        entity_registry.async_update_entity(self.entity_id, area_id=area.id)
-
-    async def _async_set_label(self) -> None:
+    def _apply_label_mapping(self) -> None:
+        """Add the label its TapHome category is mapped to."""
         mapping = self._core_config.label_mapping
         if mapping is None or self._category is None:
             return
-        target = mapping.get(self._category)
-        if target is None:
+        label_id = mapping.get(self._category)
+        if label_id is None:
             return
-        label_registry = lr.async_get(self.hass)
         entity_registry = er.async_get(self.hass)
-
         entry = entity_registry.async_get(self.entity_id)
-        if entry is None:
+        if entry is None or lr.async_get(self.hass).async_get_label(label_id) is None:
             return
-
-        # A configured label id is used directly; a legacy YAML name is created
-        # on demand.
-        label = label_registry.async_get_label(
-            target
-        ) or label_registry.async_get_label_by_name(target)
-        if label is None:
-            label = label_registry.async_create(target)
-
         entity_registry.async_update_entity(
-            self.entity_id, labels=entry.labels | {label.label_id}
+            self.entity_id, labels=entry.labels | {label_id}
         )
-
-    def _schedule_update_when_changed(self, device):
-        device.state.changed += lambda _, __: self.schedule_update_ha_state()
 
     @cached_property
     def should_poll(self) -> bool:
@@ -141,6 +155,7 @@ class TapHomeEntity(Entity):
     ) -> None:
         """Handle connection state changes."""
         self._attr_available = current_state == HubConnectionState.CONNECTED
+        self.schedule_update_ha_state()
 
     def _state_changed(self, _: DeviceState | None, current_state: DeviceState) -> None:
         self._add_state_attributes_if_allowed(

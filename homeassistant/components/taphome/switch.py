@@ -13,9 +13,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .add_entry_request import add_taphome_entities
+from .entity import TapHomeEntity
 from .taphome_config_entry import AddEntryRequest, TapHomeEntityConfig
 from .taphome_data import TapHomeConfigEntry
-from .taphome_entity import TapHomeEntity
 
 
 class TapHomeSwitchConfig(TapHomeEntityConfig):
@@ -37,7 +37,7 @@ class TapHomeSwitch(TapHomeEntity, SwitchEntity):
         self._switch = config.hub.get_typed_device(
             config.entity.id, DigitalOutputDevice
         )
-        self._switch.state.changed += self._on_switch_state_change
+        self._subscribe(self._switch.state.changed, self._on_switch_state_change)
 
         super().__init__(config, self._switch, SWITCH_DOMAIN)
 

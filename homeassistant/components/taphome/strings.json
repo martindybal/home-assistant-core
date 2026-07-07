@@ -10,8 +10,6 @@
           "ip": "IP address",
           "id": "Core ID",
           "webhook_id": "Webhook ID",
-          "use_description_as_entity_id": "Use TapHome descriptions as entity IDs",
-          "use_description_as_name": "Use TapHome descriptions as entity names",
           "enabled_attributes": "Exposed attributes"
         },
         "data_description": {
@@ -19,7 +17,7 @@
           "use_cloud": "Connect through the TapHome cloud instead of your local network. Only recommended when the Core is not reachable locally — the cloud is slower and requires an internet connection. The IP address is ignored when enabled.",
           "ip": "Find it in the TapHome app under My location.",
           "id": "Optional identifier for this Core. Only needed when you use more than one Core.",
-          "webhook_id": "Recommended: lets the Core push updates instantly instead of Home Assistant polling every 2 seconds. Enter any name, e.g. taphome_primary, then in the TapHome app on the Expose devices screen enable Webhook and set the Webhook URL to e.g. http://homeassistant.local:8123/api/webhook/taphome — replace homeassistant.local with your own Home Assistant address and taphome_primary with the name you entered above."
+          "webhook_id": "Recommended: lets the Core push updates instantly instead of Home Assistant polling every 2 seconds. Enter any name, then in the TapHome app on the Expose devices screen enable Webhook and point the webhook URL to the Home Assistant webhook endpoint with that name (see the integration documentation for the exact address)."
         },
         "submit": "Next"
       },
@@ -32,8 +30,6 @@
           "ip": "IP address",
           "id": "Core ID",
           "webhook_id": "Webhook ID",
-          "use_description_as_entity_id": "Use TapHome descriptions as entity IDs",
-          "use_description_as_name": "Use TapHome descriptions as entity names",
           "enabled_attributes": "Exposed attributes"
         },
         "data_description": {
@@ -41,7 +37,7 @@
           "use_cloud": "Connect through the TapHome cloud instead of your local network. Only recommended when the Core is not reachable locally — the cloud is slower and requires an internet connection. The IP address is ignored when enabled.",
           "ip": "Find it in the TapHome app under My location.",
           "id": "Optional identifier for this Core. Only needed when you use more than one Core.",
-          "webhook_id": "Recommended: lets the Core push updates instantly instead of Home Assistant polling every 2 seconds. Enter any name, e.g. taphome_primary, then in the TapHome app on the Expose devices screen enable Webhook and set the Webhook URL to e.g. http://homeassistant.local:8123/api/webhook/taphome — replace homeassistant.local with your own Home Assistant address and taphome_primary with the name you entered above."
+          "webhook_id": "Recommended: lets the Core push updates instantly instead of Home Assistant polling every 2 seconds. Enter any name, then in the TapHome app on the Expose devices screen enable Webhook and point the webhook URL to the Home Assistant webhook endpoint with that name (see the integration documentation for the exact address)."
         },
         "submit": "Save"
       },
@@ -83,8 +79,6 @@
       "invalid_auth": "The TapHome Core rejected the token.",
       "ip_required": "Fill in the IP address of your Core, or enable the TapHome cloud.",
       "no_devices_selected": "Select at least one device.",
-      "no_common_platform": "The selected devices cannot be exposed as any domain.",
-      "invalid_device": "Select a device from the list.",
       "invalid_device_id": "Invalid device ID."
     },
     "abort": {
@@ -115,8 +109,6 @@
           "ip": "IP address",
           "id": "Core ID",
           "webhook_id": "Webhook ID",
-          "use_description_as_entity_id": "Use TapHome descriptions as entity IDs",
-          "use_description_as_name": "Use TapHome descriptions as entity names",
           "enabled_attributes": "Exposed attributes"
         },
         "data_description": {
@@ -124,7 +116,7 @@
           "use_cloud": "Connect through the TapHome cloud instead of your local network. Only recommended when the Core is not reachable locally — the cloud is slower and requires an internet connection. The IP address is ignored when enabled.",
           "ip": "Find it in the TapHome app under My location.",
           "id": "Optional identifier for this Core. Only needed when you use more than one Core.",
-          "webhook_id": "Recommended: lets the Core push updates instantly instead of Home Assistant polling every 2 seconds. Enter any name, e.g. taphome_primary, then in the TapHome app on the Expose devices screen enable Webhook and set the Webhook URL to e.g. http://homeassistant.local:8123/api/webhook/taphome — replace homeassistant.local with your own Home Assistant address and taphome_primary with the name you entered above."
+          "webhook_id": "Recommended: lets the Core push updates instantly instead of Home Assistant polling every 2 seconds. Enter any name, then in the TapHome app on the Expose devices screen enable Webhook and point the webhook URL to the Home Assistant webhook endpoint with that name (see the integration documentation for the exact address)."
         },
         "description": "Update the connection and Core settings of your TapHome Core. A local connection is recommended: only enable \"Use TapHome cloud\" if you can't reach the Core directly on your network — the cloud updates less often (about every 20 seconds) and depends on TapHome's servers being reachable. Find your Core's IP address in the TapHome app under \"My location\".",
         "submit": "Save"
@@ -214,9 +206,7 @@
       "invalid_auth": "The TapHome Core rejected the token.",
       "ip_required": "Fill in the IP address of your Core, or enable the TapHome cloud.",
       "unique_id_mismatch": "The connected Core does not match the Core this entry was created for.",
-      "no_devices_selected": "Select at least one device.",
-      "no_common_platform": "The selected devices cannot be exposed as any domain.",
-      "invalid_device": "Select a device from the list."
+      "no_devices_selected": "Select at least one device."
     },
     "abort": {
       "entry_not_loaded": "The TapHome Core is not loaded. Fix the connection first.",

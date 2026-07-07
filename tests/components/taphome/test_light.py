@@ -83,6 +83,7 @@ async def test_light_unavailable_when_hub_disconnects(
     hass: HomeAssistant, mock_hub
 ) -> None:
     """Entities become unavailable when the core connection is lost."""
+
     await setup_integration(hass, make_config_entry())
     assert hass.states.get(ENTITY_ID).state != "unavailable"
 

@@ -41,7 +41,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .binary_sensor import BinarySensorEntityConfig
@@ -62,10 +62,9 @@ from .const import (
     CONF_TIMES,
     CONF_VALVE,
     CONF_ZONES,
+    DOMAIN,
     PLATFORMS,
     TAPHOME_PLATFORM,
-    USE_DESCRIPTION_AS_ENTITY_ID,
-    USE_DESCRIPTION_AS_NAME,
 )
 from .cover import TapHomeCoverConfig
 from .fan import TapHomeFanConfig
@@ -151,6 +150,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapHomeConfigEntry) -> b
 
     hub.connection_state.changed += hub_connection_state_changed
 
+    _register_hub_device(hass, entry, hub)
     _register_webhook(hass, entry, hub, core_config)
     _async_remove_stale_entities(hass, entry)
     _async_detect_new_devices(hass, entry, hub, taphome_issue_registry)
@@ -218,8 +218,6 @@ def _build_core_config(entry: TapHomeConfigEntry) -> TapHomeCoreConfig:
 
     return TapHomeCoreConfig(
         entry.data.get(CONF_ID),
-        options.get(USE_DESCRIPTION_AS_ENTITY_ID, False),
-        options.get(USE_DESCRIPTION_AS_NAME, False),
         zone_mapping,
         label_mapping,
         tuple(options.get(CONF_ENABLED_ATTRIBUTES, AVAILABLE_ATTRIBUTES)),
@@ -298,6 +296,24 @@ def _async_detect_new_devices(
     known = {int(value) for value in known_raw}
     new_devices = exposed - known - configured
     issue_registry.sync_new_device_issues(entry.entry_id, hub, new_devices)
+
+
+def _register_hub_device(
+    hass: HomeAssistant, entry: TapHomeConfigEntry, hub: TapHomeHub
+) -> None:
+    """Register the TapHome Core as the hub device."""
+    location = hub.location
+    location_id = (
+        location.location_id if location else entry.data.get(CONF_ID) or DOMAIN
+    )
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, location_id)},
+        name=location.location_name if location else entry.title,
+        manufacturer="TapHome",
+        model="Core",
+    )
 
 
 def _register_webhook(

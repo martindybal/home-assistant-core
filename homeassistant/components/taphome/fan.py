@@ -18,9 +18,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .add_entry_request import add_taphome_entities
+from .entity import TapHomeEntity
 from .taphome_config_entry import AddEntryRequest, TapHomeEntityConfig
 from .taphome_data import TapHomeConfigEntry
-from .taphome_entity import TapHomeEntity
 
 
 class TapHomeFanConfig(TapHomeEntityConfig):
@@ -59,7 +59,9 @@ class TapHomeFan(TapHomeEntity, FanEntity):
             )
             self._attr_supported_features |= FanEntityFeature.PRESET_MODE
             self._attr_preset_modes = self._preset_mode_device.options
-            self._preset_mode_device.state.changed += self._on_preset_mode_change
+            self._subscribe(
+                self._preset_mode_device.state.changed, self._on_preset_mode_change
+            )
             self._schedule_update_when_changed(self._preset_mode_device)
 
         super().__init__(config, self._fan_device, FAN_DOMAIN)

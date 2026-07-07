@@ -10,9 +10,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .add_entry_request import add_taphome_entities
+from .entity import TapHomeEntity
 from .taphome_config_entry import AddEntryRequest, TapHomeEntityConfig
 from .taphome_data import TapHomeConfigEntry
-from .taphome_entity import TapHomeEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class TapHomeTime(TapHomeEntity, TimeEntity):
         self._variable = config.hub.get_typed_device(
             config.entity.id, SessionDurationVariableDevice
         )
-        self._variable.state.changed += self._on_variable_state_change
+        self._subscribe(self._variable.state.changed, self._on_variable_state_change)
 
         super().__init__(config, self._variable, TIME_DOMAIN)
 

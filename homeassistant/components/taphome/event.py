@@ -14,9 +14,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .add_entry_request import add_taphome_entities
 from .button import TapHomeButtonConfig
+from .entity import TapHomeEntity
 from .taphome_config_entry import AddEntryRequest
 from .taphome_data import TapHomeConfigEntry
-from .taphome_entity import TapHomeEntity
 
 _LOGGER = logging.getLogger(__name__)
 

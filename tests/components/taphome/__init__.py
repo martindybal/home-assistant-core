@@ -201,6 +201,7 @@ def make_hub(api: FakeTapHomeApi | None = None) -> TapHomeHub:
 
 def make_config_entry(extra_options: dict | None = None):
     """Return a config entry as created by the config flow."""
+
     return MockConfigEntry(
         domain=DOMAIN,
         title=TEST_LOCATION_NAME,

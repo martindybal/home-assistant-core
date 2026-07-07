@@ -12,9 +12,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .add_entry_request import add_taphome_entities
+from .entity import TapHomeEntity
 from .taphome_config_entry import AddEntryRequest, TapHomeEntityConfig
 from .taphome_data import TapHomeConfigEntry
-from .taphome_entity import TapHomeEntity
 
 
 class TapHomeCoverConfig(TapHomeEntityConfig):
@@ -55,7 +55,7 @@ class TapHomeCover(TapHomeEntity, CoverEntity):
                 | CoverEntityFeature.CLOSE_TILT
             )
 
-        self._cover.state.changed += self._on_cover_state_change
+        self._subscribe(self._cover.state.changed, self._on_cover_state_change)
         super().__init__(config, self._cover, COVER_DOMAIN)
 
     def _on_cover_state_change(

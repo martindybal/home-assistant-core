@@ -37,8 +37,6 @@ class TapHomeCoreConfig:
     """Holds configuration options for a TapHome core instance."""
 
     id: str
-    use_description_as_entity_id: bool
-    use_description_as_name: bool
     zone_mapping: NameMapping | None
     label_mapping: NameMapping | None
     enabled_attributes: tuple[str, ...]

@@ -63,8 +63,6 @@ from .const import (
     CONF_ZONES,
     DEFAULT_CLOUD_API_URL,
     DOMAIN,
-    USE_DESCRIPTION_AS_ENTITY_ID,
-    USE_DESCRIPTION_AS_NAME,
 )
 from .platform_descriptors import (
     PLATFORM_DESCRIPTORS,
@@ -94,8 +92,6 @@ CORE_SCHEMA = CONNECTION_SCHEMA.extend(
     {
         vol.Optional(CONF_ID): TextSelector(),
         vol.Optional(CONF_WEBHOOK_ID): TextSelector(),
-        vol.Optional(USE_DESCRIPTION_AS_ENTITY_ID, default=False): BooleanSelector(),
-        vol.Optional(USE_DESCRIPTION_AS_NAME, default=False): BooleanSelector(),
         vol.Optional(
             CONF_ENABLED_ATTRIBUTES, default=AVAILABLE_ATTRIBUTES
         ): SelectSelector(
@@ -141,10 +137,6 @@ def _apply_core_settings(options: dict[str, Any], user_input: dict[str, Any]) ->
         options[CONF_WEBHOOK_ID] = user_input[CONF_WEBHOOK_ID].strip()
     else:
         options.pop(CONF_WEBHOOK_ID, None)
-    options[USE_DESCRIPTION_AS_ENTITY_ID] = user_input.get(
-        USE_DESCRIPTION_AS_ENTITY_ID, False
-    )
-    options[USE_DESCRIPTION_AS_NAME] = user_input.get(USE_DESCRIPTION_AS_NAME, False)
     options[CONF_ENABLED_ATTRIBUTES] = user_input.get(
         CONF_ENABLED_ATTRIBUTES, AVAILABLE_ATTRIBUTES
     )
@@ -430,10 +422,6 @@ class _TapHomeSetupFlow:
                 self.config_entry.data.get(CONF_API_URL) or ""
             ),
             CONF_WEBHOOK_ID: self._options.get(CONF_WEBHOOK_ID),
-            USE_DESCRIPTION_AS_ENTITY_ID: self._options.get(
-                USE_DESCRIPTION_AS_ENTITY_ID, False
-            ),
-            USE_DESCRIPTION_AS_NAME: self._options.get(USE_DESCRIPTION_AS_NAME, False),
             CONF_ENABLED_ATTRIBUTES: self._options.get(
                 CONF_ENABLED_ATTRIBUTES, AVAILABLE_ATTRIBUTES
             ),
@@ -482,16 +470,11 @@ class _TapHomeSetupFlow:
         cleared = bool(user_input and user_input.get("clear_selection"))
 
         if user_input is not None and not cleared:
-            try:
-                device_ids = [int(value) for value in user_input.get("devices", [])]
-            except ValueError:
-                device_ids = []
-                errors["base"] = "invalid_device"
-            if not errors and not device_ids:
+            # The selector limits the values to the known device ids.
+            device_ids = [int(value) for value in user_input.get("devices", [])]
+            if not device_ids:
                 errors["base"] = "no_devices_selected"
-            if not errors and not self._platforms_for_devices(device_ids):
-                errors["base"] = "no_common_platform"
-            if not errors:
+            else:
                 self._pending_device_ids = device_ids
                 return await self.async_step_add_devices_platform()
 
@@ -615,15 +598,13 @@ class _TapHomeSetupFlow:
         suggested_values: dict[str, Any] = {}
         for device_id, config_key in pairs_with_options:
             descriptor = PLATFORM_DESCRIPTORS_BY_KEY[config_key]
-            field_schema, field_suggested = self._build_device_options_schema(
+            field_schema, _ = self._build_device_options_schema(
                 descriptor, {"id": device_id}
             )
             section_key = self._pair_section_key(device_id, config_key)
             schema_dict[vol.Optional(section_key)] = section(
                 field_schema, {"collapsed": descriptor.advanced}
             )
-            if field_suggested:
-                suggested_values[section_key] = field_suggested
 
         if user_input is not None:
             suggested_values = user_input
@@ -678,10 +659,9 @@ class _TapHomeSetupFlow:
         errors: dict[str, str] = {}
         if user_input is not None:
             entity_ids = user_input.get("devices", [])
+            # The selector limits the values to this entry's entities.
             if not entity_ids:
                 errors["base"] = "no_devices_selected"
-            elif not all(entity_id in entity_map for entity_id in entity_ids):
-                errors["base"] = "invalid_device"
             else:
                 self._edit_selection = list(
                     dict.fromkeys(entity_map[entity_id] for entity_id in entity_ids)
@@ -715,10 +695,9 @@ class _TapHomeSetupFlow:
         errors: dict[str, str] = {}
         if user_input is not None:
             entity_ids = user_input.get("devices", [])
+            # The selector limits the values to this entry's entities.
             if not entity_ids:
                 errors["base"] = "no_devices_selected"
-            elif not all(entity_id in entity_map for entity_id in entity_ids):
-                errors["base"] = "invalid_device"
             else:
                 self._remove_devices(
                     list(
@@ -843,36 +822,28 @@ class _TapHomeSetupFlow:
             definition.name: definition.config_key for definition in DOMAIN_DEFINITIONS
         }
         index_by_device: dict[tuple[str, int], int] = {}
-        selection_by_unique_id: dict[str, str] = {}
         for descriptor in PLATFORM_DESCRIPTORS:
             for index, device_config in enumerate(
                 self._options.get(descriptor.config_key) or []
             ):
                 device_id = _device_config_id(device_config)
                 index_by_device[(descriptor.config_key, device_id)] = index
-                if isinstance(device_config, dict) and device_config.get("unique_id"):
-                    selection_by_unique_id[device_config["unique_id"]] = (
-                        f"{descriptor.config_key}:{index}"
-                    )
 
         registry = er.async_get(self.hass)
         selections: dict[str, str] = {}
         for entry in er.async_entries_for_config_entry(
             registry, self.config_entry.entry_id
         ):
-            selection = selection_by_unique_id.get(entry.unique_id)
-            if selection is None:
-                config_key = domain_to_key.get(entry.domain)
-                if config_key is None:
-                    continue
-                device_id = _parse_device_id_from_unique_id(entry.unique_id)
-                if device_id is None:
-                    continue
-                index = index_by_device.get((config_key, device_id))
-                if index is None:
-                    continue
-                selection = f"{config_key}:{index}"
-            selections[entry.entity_id] = selection
+            config_key = domain_to_key.get(entry.domain)
+            if config_key is None:
+                continue
+            device_id = _parse_device_id_from_unique_id(entry.unique_id)
+            if device_id is None:
+                continue
+            index = index_by_device.get((config_key, device_id))
+            if index is None:
+                continue
+            selections[entry.entity_id] = f"{config_key}:{index}"
         return selections
 
     def _remove_devices(self, selections: list[str]) -> None:
@@ -887,21 +858,6 @@ class _TapHomeSetupFlow:
                 devices.pop(index)
             if not devices:
                 self._options.pop(config_key, None)
-
-    def _platforms_for_devices(self, device_ids: list[int]) -> list[str]:
-        """Return the platforms at least one of the given devices qualifies for."""
-        devices = [
-            device
-            for device_id in device_ids
-            if (device := self._devices.get(device_id)) is not None
-        ]
-        if not devices:
-            return []
-        return [
-            descriptor.config_key
-            for descriptor in PLATFORM_DESCRIPTORS
-            if any(_device_qualifies(device, descriptor) for device in devices)
-        ]
 
     def _platforms_for_device(self, device_id: int) -> list[str]:
         """Return the platforms a single device qualifies for."""
@@ -1032,10 +988,6 @@ class _TapHomeSetupFlow:
             descriptor, device_config, self._devices, self._device_label
         )
 
-    def _build_field_selector(self, option_field: OptionField) -> Any:
-        """Build the selector for one per-device option field."""
-        return build_field_selector(option_field, self._devices, self._device_label)
-
     def _apply_device_options(
         self,
         descriptor: PlatformDescriptor,
@@ -1134,7 +1086,6 @@ class TapHomeConfigFlow(_TapHomeSetupFlow, ConfigFlow, domain=DOMAIN):
 
         suggested_values = user_input or {
             CONF_WEBHOOK_ID: DEFAULT_WEBHOOK_ID,
-            USE_DESCRIPTION_AS_ENTITY_ID: True,
         }
         return self.async_show_form(
             step_id="user",
@@ -1204,10 +1155,6 @@ class TapHomeConfigFlow(_TapHomeSetupFlow, ConfigFlow, domain=DOMAIN):
             CONF_ID: entry.data.get(CONF_ID),
             **_connection_values_from_api_url(entry.data.get(CONF_API_URL) or ""),
             CONF_WEBHOOK_ID: entry.options.get(CONF_WEBHOOK_ID),
-            USE_DESCRIPTION_AS_ENTITY_ID: entry.options.get(
-                USE_DESCRIPTION_AS_ENTITY_ID, False
-            ),
-            USE_DESCRIPTION_AS_NAME: entry.options.get(USE_DESCRIPTION_AS_NAME, False),
             CONF_ENABLED_ATTRIBUTES: entry.options.get(
                 CONF_ENABLED_ATTRIBUTES, AVAILABLE_ATTRIBUTES
             ),
