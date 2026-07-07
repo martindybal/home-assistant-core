@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pycares
 import pytest
 from taphome_sdk import HubConnectionState, TapHomeApi, TapHomeHubFactory
+
+# aiodns (used by aiohttp) lazily spawns a process-wide pycares shutdown
+# daemon thread. Start it up front so the thread-leak check sees it in its
+# baseline instead of attributing it to the first test.
+pycares._shutdown_manager.start()  # noqa: SLF001
 
 from . import TEST_LOCATION, make_config_entry, make_hub
 
